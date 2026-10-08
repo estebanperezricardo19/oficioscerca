@@ -1,0 +1,6 @@
+{
+  "name": "OficiosCerca",
+  "description": "Encuentra personas confiables para resolver los oficios de tu hogar cerca de ti.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

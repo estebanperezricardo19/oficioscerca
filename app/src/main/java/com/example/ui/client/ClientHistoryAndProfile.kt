@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -24,17 +25,23 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -45,6 +52,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,10 +64,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.AppNotification
 import com.example.model.ServiceRequest
+import com.example.model.ServiceStatus
+import com.example.viewmodel.ClientRequestsUiState
 import com.example.ui.components.EmptyStateView
 import com.example.ui.components.OficiosButton
 import com.example.ui.components.StatusBadge
@@ -73,13 +84,57 @@ import com.example.ui.theme.StarGold
 import com.example.ui.theme.SurfaceWhite
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
+import androidx.compose.material3.Badge
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import com.example.model.UserRole
+import com.example.ui.theme.oficiosTextFieldColors
 import com.example.viewmodel.OficiosViewModel
+import com.example.viewmodel.ProfileActionUiState
 import com.example.viewmodel.Screen
+
+internal fun formatDisplayDate(rawDate: String): String {
+    if (rawDate.isBlank()) return "Fecha reciente"
+    return try {
+        val datePart = rawDate.substringBefore("T").trim()
+        val parts = datePart.split("-")
+        if (parts.size == 3) {
+            val year = parts[0]
+            val month = when (parts[1]) {
+                "01" -> "ene."
+                "02" -> "feb."
+                "03" -> "mar."
+                "04" -> "abr."
+                "05" -> "may."
+                "06" -> "jun."
+                "07" -> "jul."
+                "08" -> "ago."
+                "09" -> "sep."
+                "10" -> "oct."
+                "11" -> "nov."
+                "12" -> "dic."
+                else -> parts[1]
+            }
+            val day = parts[2].toIntOrNull()?.toString() ?: parts[2]
+            "$day $month $year"
+        } else {
+            rawDate
+        }
+    } catch (_: Exception) {
+        rawDate
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ClientHistoryScreen(viewModel: OficiosViewModel) {
-    val requests by viewModel.requests.collectAsState()
+    val requestsState by viewModel.clientRequestsState.collectAsState()
+    var selectedFilter by remember { mutableStateOf("Todas") }
+
+    // Trigger load on entry
+    LaunchedEffect(Unit) {
+        viewModel.loadClientRequests()
+    }
 
     Column(
         modifier = Modifier
@@ -90,47 +145,206 @@ fun ClientHistoryScreen(viewModel: OficiosViewModel) {
             title = {
                 Column {
                     Text(
-                        text = "Historial",
+                        text = "Mis solicitudes",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         color = PrimaryNavy
                     )
                     Text(
-                        text = "Mis servicios",
-                        fontSize = 13.sp,
+                        text = "Historial y estado de tus servicios",
+                        fontSize = 12.sp,
                         color = SecondaryTeal
+                    )
+                }
+            },
+            actions = {
+                IconButton(
+                    onClick = { viewModel.loadClientRequests(forceRefresh = true) },
+                    modifier = Modifier.testTag("refresh_requests_btn")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Actualizar solicitudes",
+                        tint = PrimaryNavy
                     )
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundSoft)
         )
 
-        Text(
-            text = "Consulta los servicios que has solicitado.",
-            fontSize = 14.sp,
-            color = TextSecondary,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)
-        )
-
-        if (requests.isEmpty()) {
-            EmptyStateView(
-                title = "No tienes servicios todavía",
-                message = "Explora las categorías y solicita tu primer servicio para el hogar.",
-                actionText = "Buscar servicios",
-                onActionClick = { viewModel.navigateTo(Screen.ClientSearch) }
-            )
-        } else {
-            LazyColumn(
-                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(requests) { req ->
-                    ClientHistoryCard(
-                        request = req,
-                        onClick = {
-                            viewModel.openTracking(req.id)
+        when (val state = requestsState) {
+            is ClientRequestsUiState.Loading -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        CircularProgressIndicator(
+                            color = SecondaryTeal,
+                            modifier = Modifier.size(42.dp)
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Consultando tus solicitudes en Supabase...",
+                            fontSize = 14.sp,
+                            color = TextSecondary
+                        )
+                    }
+                }
+            }
+            is ClientRequestsUiState.Error -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = SurfaceWhite),
+                        elevation = CardDefaults.cardElevation(2.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ErrorOutline,
+                                contentDescription = null,
+                                tint = Color(0xFFDC2626),
+                                modifier = Modifier.size(48.dp)
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "Error al cargar solicitudes",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = PrimaryNavy
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = state.message,
+                                fontSize = 13.sp,
+                                color = TextSecondary,
+                                modifier = Modifier.padding(bottom = 18.dp)
+                            )
+                            OficiosButton(
+                                text = "Reintentar",
+                                onClick = { viewModel.loadClientRequests(forceRefresh = true) },
+                                modifier = Modifier.fillMaxWidth(),
+                                testTag = "retry_history_btn"
+                            )
                         }
+                    }
+                }
+            }
+            is ClientRequestsUiState.Success -> {
+                val requests = state.requests
+                if (requests.isEmpty()) {
+                    EmptyStateView(
+                        title = "No tienes solicitudes todavía",
+                        message = "Aquí aparecerán las solicitudes que realices a profesionales. Podrás hacer seguimiento a su estado en tiempo real.",
+                        actionText = "Buscar profesionales",
+                        onActionClick = { viewModel.navigateTo(Screen.ClientHome) }
                     )
+                } else {
+                    val filterOptions = listOf("Todas", "Activas", "Finalizadas", "Canceladas")
+                    val filteredRequests = remember(requests, selectedFilter) {
+                        when (selectedFilter) {
+                            "Activas" -> requests.filter {
+                                it.status == ServiceStatus.PENDING ||
+                                    it.status == ServiceStatus.ACCEPTED ||
+                                    it.status == ServiceStatus.ON_THE_WAY ||
+                                    it.status == ServiceStatus.IN_PROGRESS
+                            }
+                            "Finalizadas" -> requests.filter { it.status == ServiceStatus.COMPLETED }
+                            "Canceladas" -> requests.filter { it.status == ServiceStatus.CANCELLED }
+                            else -> requests
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 20.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        filterOptions.forEach { option ->
+                            val selected = selectedFilter == option
+                            FilterChip(
+                                selected = selected,
+                                onClick = { selectedFilter = option },
+                                label = {
+                                    Text(
+                                        text = option,
+                                        fontSize = 13.sp,
+                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = SecondaryTeal,
+                                    selectedLabelColor = SurfaceWhite,
+                                    containerColor = SurfaceWhite,
+                                    labelColor = TextPrimary
+                                )
+                            )
+                        }
+                    }
+
+                    if (filteredRequests.isEmpty()) {
+                        EmptyStateView(
+                            title = "Sin solicitudes en '$selectedFilter'",
+                            message = "No hay solicitudes registradas con este estado.",
+                            actionText = "Ver todas",
+                            onActionClick = { selectedFilter = "Todas" }
+                        )
+                    } else {
+                        LazyColumn(
+                            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp),
+                            verticalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            item {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "${filteredRequests.size} ${if (filteredRequests.size == 1) "solicitud" else "solicitudes"}",
+                                        fontSize = 13.sp,
+                                        color = TextSecondary,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Text(
+                                        text = "Más recientes primero",
+                                        fontSize = 11.sp,
+                                        color = SecondaryTeal,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
+
+                            items(filteredRequests, key = { it.id }) { req ->
+                                ClientHistoryCard(
+                                    request = req,
+                                    onClick = {
+                                        viewModel.openTracking(req.id)
+                                    }
+                                )
+                            }
+
+                            item {
+                                Spacer(modifier = Modifier.height(16.dp))
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -152,80 +366,184 @@ fun ClientHistoryCard(
         elevation = CardDefaults.cardElevation(2.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
+            // Header: Avatar, Real Professional Name, Profession and Status Badge
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     UserAvatar(
                         initial = request.professionalName.firstOrNull()?.toString() ?: "P",
-                        size = 40.dp,
+                        size = 44.dp,
                         backgroundColor = PrimaryNavy,
                         textColor = AccentCyan
                     )
-                    Spacer(modifier = Modifier.width(10.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
                     Column {
                         Text(
                             text = request.professionalName,
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
-                            color = PrimaryNavy
+                            color = PrimaryNavy,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = request.categoryName,
+                            text = request.professionalProfession,
                             fontSize = 13.sp,
-                            color = SecondaryTeal
+                            color = SecondaryTeal,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
+                Spacer(modifier = Modifier.width(8.dp))
                 StatusBadge(status = request.status)
             }
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            Text(
-                text = request.description,
-                fontSize = 13.sp,
-                color = TextPrimary,
-                maxLines = 2
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
+            // Category tag and creation date
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = request.scheduledDate,
-                    fontSize = 12.sp,
-                    color = TextSecondary
-                )
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = Color(0xFFD6F2F5)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Build,
+                            contentDescription = null,
+                            tint = SecondaryTeal,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = request.categoryName,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = PrimaryNavy
+                        )
+                    }
+                }
 
-                if (request.ratingGiven != null) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.CalendarToday,
+                        contentDescription = null,
+                        tint = TextSecondary,
+                        modifier = Modifier.size(12.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = formatDisplayDate(request.createdAt),
+                        fontSize = 11.sp,
+                        color = TextSecondary
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Description
+            Text(
+                text = request.description,
+                fontSize = 13.sp,
+                color = TextPrimary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                lineHeight = 18.sp
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Location
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(
+                    imageVector = Icons.Default.LocationOn,
+                    contentDescription = null,
+                    tint = SecondaryTeal,
+                    modifier = Modifier.size(14.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = request.location,
+                    fontSize = 12.sp,
+                    color = TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(Color(0xFFF1F5F9))
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Bottom row: rating or "Ver detalle y seguimiento"
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (request.status == ServiceStatus.COMPLETED && request.ratingGiven != null) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             imageVector = Icons.Default.Star,
                             contentDescription = null,
                             tint = StarGold,
-                            modifier = Modifier.size(15.dp)
+                            modifier = Modifier.size(16.dp)
                         )
-                        Spacer(modifier = Modifier.width(3.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = request.ratingGiven.toString(),
-                            fontSize = 13.sp,
+                            text = "Calificación: ${request.ratingGiven}",
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             color = PrimaryNavy
                         )
                     }
                 } else {
                     Text(
-                        text = "Ver detalle",
+                        text = if (request.scheduledDate.isNotBlank() && request.scheduledDate != "Por coordinar") "Cita: ${request.scheduledDate}" else "En seguimiento",
                         fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        color = TextSecondary
+                    )
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = "Ver seguimiento",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
                         color = SecondaryTeal
+                    )
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = null,
+                        tint = SecondaryTeal,
+                        modifier = Modifier.size(14.dp)
                     )
                 }
             }
@@ -237,6 +555,10 @@ fun ClientHistoryCard(
 @Composable
 fun ClientProfileScreen(viewModel: OficiosViewModel) {
     val currentUser by viewModel.currentUser.collectAsState()
+    val profileActionState by viewModel.profileActionState.collectAsState()
+    val notifications by viewModel.notifications.collectAsState()
+    val authLoading by viewModel.authLoading.collectAsState()
+    val unreadCount = notifications.count { !it.read }
     var isEditing by remember { mutableStateOf(false) }
 
     var editName by remember(currentUser) { mutableStateOf(currentUser.name) }
@@ -267,6 +589,22 @@ fun ClientProfileScreen(viewModel: OficiosViewModel) {
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            if (profileActionState is ProfileActionUiState.Success) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFFD1FAE5),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = (profileActionState as ProfileActionUiState.Success).message,
+                        color = Color(0xFF065F46),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
+            }
+
             // Card info básica
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -288,16 +626,18 @@ fun ClientProfileScreen(viewModel: OficiosViewModel) {
                     Spacer(modifier = Modifier.height(12.dp))
 
                     Text(
-                        text = "${currentUser.name} ${currentUser.lastName}",
+                        text = "${currentUser.name} ${currentUser.lastName}".trim(),
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
                         color = PrimaryNavy
                     )
-                    Text(
-                        text = currentUser.email,
-                        fontSize = 13.sp,
-                        color = TextSecondary
-                    )
+                    if (currentUser.email.isNotBlank()) {
+                        Text(
+                            text = currentUser.email,
+                            fontSize = 13.sp,
+                            color = TextSecondary
+                        )
+                    }
 
                     Spacer(modifier = Modifier.height(14.dp))
 
@@ -310,7 +650,7 @@ fun ClientProfileScreen(viewModel: OficiosViewModel) {
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = currentUser.location,
+                            text = currentUser.location.ifBlank { "Sin ubicación registrada" },
                             fontSize = 13.sp,
                             color = PrimaryNavy
                         )
@@ -327,7 +667,7 @@ fun ClientProfileScreen(viewModel: OficiosViewModel) {
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = currentUser.phone,
+                            text = currentUser.phone.ifBlank { "Sin teléfono registrado" },
                             fontSize = 13.sp,
                             color = PrimaryNavy
                         )
@@ -336,7 +676,7 @@ fun ClientProfileScreen(viewModel: OficiosViewModel) {
             }
 
             if (isEditing) {
-                // Formulario editar perfil
+                val isSaving = profileActionState is ProfileActionUiState.Loading
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
@@ -356,38 +696,61 @@ fun ClientProfileScreen(viewModel: OficiosViewModel) {
 
                         OutlinedTextField(
                             value = editName,
-                            onValueChange = { editName = it },
+                            onValueChange = {
+                                editName = it
+                                if (profileActionState is ProfileActionUiState.Error) viewModel.resetProfileActionState()
+                            },
                             label = { Text("Nombre") },
                             modifier = Modifier.fillMaxWidth().testTag("edit_profile_name"),
-                            singleLine = true
+                            singleLine = true,
+                            colors = oficiosTextFieldColors()
                         )
 
                         OutlinedTextField(
                             value = editPhone,
-                            onValueChange = { editPhone = it },
+                            onValueChange = {
+                                editPhone = it
+                                if (profileActionState is ProfileActionUiState.Error) viewModel.resetProfileActionState()
+                            },
                             label = { Text("Teléfono") },
                             modifier = Modifier.fillMaxWidth().testTag("edit_profile_phone"),
-                            singleLine = true
+                            singleLine = true,
+                            colors = oficiosTextFieldColors()
                         )
 
                         OutlinedTextField(
                             value = editLocation,
-                            onValueChange = { editLocation = it },
+                            onValueChange = {
+                                editLocation = it
+                                if (profileActionState is ProfileActionUiState.Error) viewModel.resetProfileActionState()
+                            },
                             label = { Text("Ubicación") },
                             modifier = Modifier.fillMaxWidth().testTag("edit_profile_location"),
-                            singleLine = true
+                            singleLine = true,
+                            colors = oficiosTextFieldColors()
                         )
+
+                        if (profileActionState is ProfileActionUiState.Error) {
+                            Text(
+                                text = (profileActionState as ProfileActionUiState.Error).message,
+                                color = Color(0xFFB91C1C),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             OficiosButton(
-                                text = "Guardar",
+                                text = if (isSaving) "Guardando..." else "Guardar",
                                 onClick = {
-                                    viewModel.updateClientProfile(editName, editPhone, editLocation)
-                                    isEditing = false
+                                    viewModel.updateClientProfile(editName, editPhone, editLocation) {
+                                        isEditing = false
+                                    }
                                 },
+                                enabled = !isSaving,
                                 modifier = Modifier.weight(1f),
                                 testTag = "save_profile_btn"
                             )
@@ -407,7 +770,10 @@ fun ClientProfileScreen(viewModel: OficiosViewModel) {
                     ProfileOptionItem(
                         icon = Icons.Default.Person,
                         title = if (isEditing) "Cancelar edición" else "Editar perfil",
-                        onClick = { isEditing = !isEditing }
+                        onClick = {
+                            viewModel.resetProfileActionState()
+                            isEditing = !isEditing
+                        }
                     )
                     ProfileOptionItem(
                         icon = Icons.Default.History,
@@ -416,18 +782,18 @@ fun ClientProfileScreen(viewModel: OficiosViewModel) {
                     )
                     ProfileOptionItem(
                         icon = Icons.Default.Notifications,
-                        title = "Notificaciones",
+                        title = if (unreadCount > 0) "Notificaciones ($unreadCount nuevas)" else "Notificaciones",
                         onClick = { viewModel.navigateTo(Screen.ClientNotifications) }
                     )
                     ProfileOptionItem(
                         icon = Icons.Default.Settings,
                         title = "Cambiar a rol Trabajador",
-                        onClick = { viewModel.selectRoleAndProceed(com.example.model.UserRole.WORKER) }
+                        onClick = { viewModel.selectRoleAndProceed(UserRole.WORKER) }
                     )
                     ProfileOptionItem(
-                        icon = Icons.Default.ExitToApp,
-                        title = "Cerrar sesión",
-                        onClick = { viewModel.navigateTo(Screen.Welcome) },
+                        icon = Icons.AutoMirrored.Filled.ExitToApp,
+                        title = if (authLoading) "Cerrando sesión..." else "Cerrar sesión",
+                        onClick = { if (!authLoading) viewModel.logout() },
                         isDestructive = true
                     )
                 }
@@ -477,6 +843,13 @@ fun ProfileOptionItem(
 @Composable
 fun ClientNotificationsScreen(viewModel: OficiosViewModel) {
     val notifications by viewModel.notifications.collectAsState()
+    val notificationsLoading by viewModel.notificationsLoading.collectAsState()
+    val notificationsError by viewModel.notificationsError.collectAsState()
+    val currentUser by viewModel.currentUser.collectAsState()
+
+    LaunchedEffect(Unit) {
+        viewModel.refreshNotifications()
+    }
 
     Column(
         modifier = Modifier
@@ -501,26 +874,65 @@ fun ClientNotificationsScreen(viewModel: OficiosViewModel) {
                     )
                 }
             },
+            actions = {
+                IconButton(
+                    onClick = { viewModel.refreshNotifications() },
+                    modifier = Modifier.testTag("refresh_notifications_btn")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Actualizar notificaciones",
+                        tint = PrimaryNavy
+                    )
+                }
+            },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundSoft)
         )
 
-        if (notifications.isEmpty()) {
+        if (!notificationsError.isNullOrBlank()) {
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = Color(0xFFFEE2E2),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 6.dp)
+            ) {
+                Text(
+                    text = notificationsError ?: "",
+                    color = Color(0xFF991B1B),
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(10.dp)
+                )
+            }
+        }
+
+        if (notificationsLoading && notifications.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = SecondaryTeal)
+            }
+        } else if (notifications.isEmpty()) {
             EmptyStateView(
                 title = "No tienes notificaciones",
-                message = "Aquí recibirás avisos sobre tus solicitudes y el estado de los servicios."
+                message = "Aquí recibirás avisos sobre tus solicitudes y el estado de los servicios.",
+                actionText = "Actualizar",
+                onActionClick = { viewModel.refreshNotifications() }
             )
         } else {
             LazyColumn(
                 contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                items(notifications) { notif ->
+                items(notifications, key = { it.id }) { notif ->
                     NotificationCardItem(
                         notification = notif,
                         onClick = {
                             viewModel.markNotificationRead(notif.id)
                             notif.relatedRequestId?.let { id ->
-                                viewModel.openTracking(id)
+                                if (currentUser.role == UserRole.WORKER) {
+                                    viewModel.openWorkerRequestDetail(id)
+                                } else {
+                                    viewModel.openTracking(id)
+                                }
                             }
                         }
                     )

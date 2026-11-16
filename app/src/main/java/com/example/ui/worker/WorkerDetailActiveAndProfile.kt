@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -80,22 +81,49 @@ import com.example.ui.theme.StarGold
 import com.example.ui.theme.SurfaceWhite
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
+import com.example.ui.theme.oficiosTextFieldColors
 import com.example.viewmodel.OficiosViewModel
 import com.example.viewmodel.Screen
+
+import androidx.compose.material.icons.filled.Cancel
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.CircularProgressIndicator
+import com.example.viewmodel.ProfileActionUiState
+import com.example.viewmodel.WorkerActionUiState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WorkerRequestDetailScreen(viewModel: OficiosViewModel) {
     val req by viewModel.workerSelectedRequest.collectAsState()
+    val actionState by viewModel.workerActionState.collectAsState()
 
     if (req == null) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("No se encontró la solicitud seleccionada.")
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(BackgroundSoft),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "No se encontró la solicitud seleccionada.",
+                    color = TextPrimary,
+                    fontSize = 15.sp
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                OficiosButton(
+                    text = "Regresar",
+                    onClick = { viewModel.navigateBack() },
+                    modifier = Modifier.width(160.dp)
+                )
+            }
         }
         return
     }
 
     val request = req!!
+    val isActingOnThis = actionState is WorkerActionUiState.Loading &&
+            (actionState as WorkerActionUiState.Loading).requestId == request.id
 
     Column(
         modifier = Modifier
@@ -120,6 +148,18 @@ fun WorkerRequestDetailScreen(viewModel: OficiosViewModel) {
                     )
                 }
             },
+            actions = {
+                IconButton(
+                    onClick = { viewModel.refreshSelectedWorkerRequest() },
+                    modifier = Modifier.testTag("worker_detail_refresh_btn")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Actualizar",
+                        tint = PrimaryNavy
+                    )
+                }
+            },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundSoft)
         )
 
@@ -130,6 +170,23 @@ fun WorkerRequestDetailScreen(viewModel: OficiosViewModel) {
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // Action feedback banner if error
+            if (actionState is WorkerActionUiState.Error && (actionState as WorkerActionUiState.Error).requestId == request.id) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFFFEE2E2),
+                    border = BorderStroke(1.dp, Color(0xFFEF4444)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = (actionState as WorkerActionUiState.Error).message,
+                        color = Color(0xFFB91C1C),
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(14.dp)
+                    )
+                }
+            }
+
             // Cliente Card
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -186,9 +243,49 @@ fun WorkerRequestDetailScreen(viewModel: OficiosViewModel) {
                     DetailRow(label = "Servicio", value = request.categoryName)
                     DetailRow(label = "Descripción", value = request.description)
                     DetailRow(label = "Ubicación", value = request.location)
-                    DetailRow(label = "Fecha", value = request.scheduledDate)
+                    DetailRow(label = "Fecha programada", value = request.scheduledDate)
                     DetailRow(label = "Hora", value = request.scheduledTime)
-                    DetailRow(label = "Contacto", value = request.clientPhone)
+                    DetailRow(label = "Teléfono de contacto", value = request.clientPhone.ifBlank { "No disponible" })
+                    if (request.createdAt.isNotBlank()) {
+                        DetailRow(label = "Fecha de solicitud", value = request.createdAt.take(19).replace("T", " "))
+                    }
+                }
+            }
+
+            // Status explanation banner
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = when (request.status) {
+                    ServiceStatus.PENDING -> Color(0xFFFEF3C7)
+                    ServiceStatus.ACCEPTED -> Color(0xFFE0F7FA)
+                    ServiceStatus.ON_THE_WAY, ServiceStatus.IN_PROGRESS -> Color(0xFFE0F2FE)
+                    ServiceStatus.COMPLETED -> Color(0xFFD1FAE5)
+                    ServiceStatus.CANCELLED -> Color(0xFFF3F4F6)
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = when (request.status) {
+                            ServiceStatus.PENDING -> "Esta solicitud está pendiente de tu respuesta. Puedes aceptarla para coordinar con el cliente o rechazarla."
+                            ServiceStatus.ACCEPTED -> "Has aceptado esta solicitud. Comunícate con el cliente o inicia el viaje cuando estés listo."
+                            ServiceStatus.ON_THE_WAY -> "Has notificado al cliente que estás en camino a su ubicación."
+                            ServiceStatus.IN_PROGRESS -> "El trabajo se encuentra actualmente en ejecución."
+                            ServiceStatus.COMPLETED -> "Este servicio fue completado con éxito."
+                            ServiceStatus.CANCELLED -> "Esta solicitud fue cancelada o rechazada."
+                        },
+                        fontSize = 13.sp,
+                        color = when (request.status) {
+                            ServiceStatus.PENDING -> Color(0xFF92400E)
+                            ServiceStatus.ACCEPTED -> Color(0xFF0E7490)
+                            ServiceStatus.ON_THE_WAY, ServiceStatus.IN_PROGRESS -> Color(0xFF0369A1)
+                            ServiceStatus.COMPLETED -> Color(0xFF065F46)
+                            ServiceStatus.CANCELLED -> Color(0xFF4B5563)
+                        }
+                    )
                 }
             }
         }
@@ -199,33 +296,52 @@ fun WorkerRequestDetailScreen(viewModel: OficiosViewModel) {
             color = SurfaceWhite,
             shadowElevation = 8.dp
         ) {
-            Row(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 14.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    .padding(horizontal = 20.dp, vertical = 14.dp)
             ) {
-                if (request.status == ServiceStatus.PENDING) {
-                    OficiosOutlinedButton(
-                        text = "Rechazar solicitud",
-                        onClick = {
-                            viewModel.updateRequestStatusExplicit(request.id, ServiceStatus.CANCELLED)
-                            viewModel.navigateBack()
-                        },
-                        modifier = Modifier.weight(1f),
-                        testTag = "detail_reject_btn"
-                    )
+                if (isActingOnThis) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            color = SecondaryTeal,
+                            modifier = Modifier.size(28.dp),
+                            strokeWidth = 3.dp
+                        )
+                    }
+                } else if (request.status == ServiceStatus.PENDING) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OficiosOutlinedButton(
+                            text = "Rechazar solicitud",
+                            onClick = {
+                                viewModel.rejectWorkerRequest(request.id) {
+                                    viewModel.navigateBack()
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            testTag = "detail_reject_btn"
+                        )
 
-                    OficiosButton(
-                        text = "Aceptar solicitud",
-                        onClick = {
-                            viewModel.updateRequestStatusExplicit(request.id, ServiceStatus.ACCEPTED)
-                            viewModel.openWorkerActiveService(request.id)
-                        },
-                        modifier = Modifier.weight(1f),
-                        testTag = "detail_accept_btn"
-                    )
-                } else {
+                        OficiosButton(
+                            text = "Aceptar solicitud",
+                            onClick = {
+                                viewModel.acceptWorkerRequest(request.id) {
+                                    viewModel.openWorkerActiveService(request.id)
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            testTag = "detail_accept_btn"
+                        )
+                    }
+                } else if (request.status != ServiceStatus.CANCELLED) {
                     OficiosButton(
                         text = "Ver servicio activo",
                         onClick = {
@@ -233,6 +349,14 @@ fun WorkerRequestDetailScreen(viewModel: OficiosViewModel) {
                         },
                         modifier = Modifier.fillMaxWidth(),
                         testTag = "go_to_active_service_btn"
+                    )
+                } else {
+                    OficiosOutlinedButton(
+                        text = "Solicitud rechazada",
+                        onClick = { viewModel.navigateBack() },
+                        enabled = false,
+                        modifier = Modifier.fillMaxWidth(),
+                        testTag = "detail_rejected_btn"
                     )
                 }
             }
@@ -252,15 +376,52 @@ fun DetailRow(label: String, value: String) {
 @Composable
 fun WorkerActiveServiceScreen(viewModel: OficiosViewModel) {
     val req by viewModel.workerSelectedRequest.collectAsState()
+    val actionState by viewModel.workerActionState.collectAsState()
 
     if (req == null) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("No hay servicio activo seleccionado.")
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(BackgroundSoft)
+        ) {
+            TopAppBar(
+                title = {
+                    Text(
+                        text = "Servicio Activo",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = PrimaryNavy
+                    )
+                },
+                navigationIcon = {
+                    IconButton(onClick = { viewModel.navigateBack() }) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Regresar",
+                            tint = PrimaryNavy
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundSoft)
+            )
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("No hay servicio activo seleccionado.", color = TextPrimary)
+            }
         }
         return
     }
 
     val request = req!!
+    val isActingOnThis = actionState is WorkerActionUiState.Loading &&
+        (actionState as WorkerActionUiState.Loading).requestId == request.id
+
+    val orderedStatuses = listOf(
+        ServiceStatus.ACCEPTED,
+        ServiceStatus.ON_THE_WAY,
+        ServiceStatus.IN_PROGRESS,
+        ServiceStatus.COMPLETED
+    )
+    val currentStatusOrder = orderedStatuses.indexOf(request.status)
 
     Column(
         modifier = Modifier
@@ -285,6 +446,18 @@ fun WorkerActiveServiceScreen(viewModel: OficiosViewModel) {
                     )
                 }
             },
+            actions = {
+                IconButton(
+                    onClick = { viewModel.refreshSelectedWorkerRequest() },
+                    modifier = Modifier.testTag("worker_active_refresh_btn")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Actualizar estado",
+                        tint = PrimaryNavy
+                    )
+                }
+            },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundSoft)
         )
 
@@ -295,6 +468,24 @@ fun WorkerActiveServiceScreen(viewModel: OficiosViewModel) {
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            if (actionState is WorkerActionUiState.Error &&
+                (actionState as WorkerActionUiState.Error).requestId == request.id
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFFFEE2E2),
+                    border = BorderStroke(1.dp, Color(0xFFEF4444)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = (actionState as WorkerActionUiState.Error).message,
+                        color = Color(0xFFB91C1C),
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(14.dp)
+                    )
+                }
+            }
+
             // Header card
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -320,60 +511,137 @@ fun WorkerActiveServiceScreen(viewModel: OficiosViewModel) {
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(text = "Servicio: ${request.categoryName}", fontSize = 14.sp, color = SecondaryTeal, fontWeight = FontWeight.SemiBold)
                     Text(text = "Ubicación: ${request.location}", fontSize = 13.sp, color = TextSecondary)
+                    Text(text = "Contacto cliente: ${request.clientPhone.ifBlank { "No disponible" }}", fontSize = 13.sp, color = TextSecondary)
                     Text(text = "Problema: ${request.description}", fontSize = 13.sp, color = TextPrimary, modifier = Modifier.padding(top = 4.dp))
                 }
             }
 
-            // Cambiar estados del servicio
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = SurfaceWhite),
-                elevation = CardDefaults.cardElevation(2.dp)
-            ) {
-                Column(modifier = Modifier.padding(18.dp)) {
-                    Text(
-                        text = "Cambiar estado del servicio",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = PrimaryNavy
-                    )
+            if (request.status == ServiceStatus.CANCELLED) {
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color(0xFFFEE2E2),
+                    border = BorderStroke(1.dp, Color(0xFFFCA5A5)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Cancel, contentDescription = null, tint = Color(0xFFDC2626))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Solicitud cancelada",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF991B1B)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Esta solicitud fue cancelada y ya no admite cambios de estado.",
+                            fontSize = 13.sp,
+                            color = Color(0xFF7F1D1D)
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        OficiosButton(
+                            text = "Volver a mis solicitudes",
+                            onClick = { viewModel.navigateTo(Screen.WorkerRequests) },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            } else {
+                // Cambiar estados del servicio (transiciones válidas hacia adelante)
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = SurfaceWhite),
+                    elevation = CardDefaults.cardElevation(2.dp)
+                ) {
+                    Column(modifier = Modifier.padding(18.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Progreso del servicio",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = PrimaryNavy
+                            )
+                            if (isActingOnThis) {
+                                CircularProgressIndicator(
+                                    color = SecondaryTeal,
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp
+                                )
+                            }
+                        }
 
-                    Spacer(modifier = Modifier.height(14.dp))
+                        Spacer(modifier = Modifier.height(14.dp))
 
-                    ServiceStatusAction(
-                        title = "1. Aceptado",
-                        subtitle = "Confirmar y agendar la visita",
-                        isActive = request.status == ServiceStatus.ACCEPTED,
-                        onClick = { viewModel.updateRequestStatusExplicit(request.id, ServiceStatus.ACCEPTED) }
-                    )
+                        val stepSpecs = listOf(
+                            Triple(ServiceStatus.ACCEPTED, "1. Aceptado", "Confirmar y agendar la visita"),
+                            Triple(ServiceStatus.ON_THE_WAY, "2. En camino", "Avisar al cliente que vas hacia su casa"),
+                            Triple(ServiceStatus.IN_PROGRESS, "3. En progreso", "Iniciar los trabajos de reparación"),
+                            Triple(ServiceStatus.COMPLETED, "4. Finalizado", "Concluir el servicio y solicitar reseña")
+                        )
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                        stepSpecs.forEachIndexed { idx, (targetStatus, title, subtitle) ->
+                            val isActive = request.status == targetStatus
+                            val isDone = currentStatusOrder >= idx
+                            val canAdvanceTo = !isActingOnThis && request.status.canTransitionTo(targetStatus)
 
-                    ServiceStatusAction(
-                        title = "2. En camino",
-                        subtitle = "Avisar al cliente que vas hacia su casa",
-                        isActive = request.status == ServiceStatus.ON_THE_WAY,
-                        onClick = { viewModel.updateRequestStatusExplicit(request.id, ServiceStatus.ON_THE_WAY) }
-                    )
+                            ServiceStatusAction(
+                                title = title,
+                                subtitle = subtitle,
+                                isActive = isActive,
+                                isDone = isDone,
+                                enabled = canAdvanceTo,
+                                onClick = {
+                                    viewModel.updateRequestStatusExplicit(request.id, targetStatus)
+                                }
+                            )
+                            if (idx < stepSpecs.lastIndex) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                            }
+                        }
+                    }
+                }
+            }
 
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    ServiceStatusAction(
-                        title = "3. En progreso",
-                        subtitle = "Iniciar los trabajos de reparación",
-                        isActive = request.status == ServiceStatus.IN_PROGRESS,
-                        onClick = { viewModel.updateRequestStatusExplicit(request.id, ServiceStatus.IN_PROGRESS) }
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    ServiceStatusAction(
-                        title = "4. Finalizado",
-                        subtitle = "Concluir el servicio y solicitar reseña",
-                        isActive = request.status == ServiceStatus.COMPLETED,
-                        onClick = { viewModel.updateRequestStatusExplicit(request.id, ServiceStatus.COMPLETED) }
-                    )
+            if (request.status == ServiceStatus.COMPLETED) {
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color(0xFFD1FAE5),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF059669))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "¡Servicio marcado como finalizado!",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF065F46)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Se ha notificado al cliente que el trabajo concluyó. Ahora el cliente podrá calificar tu atención.",
+                            fontSize = 13.sp,
+                            color = Color(0xFF047857)
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        OficiosButton(
+                            text = "Volver a mis solicitudes",
+                            onClick = {
+                                viewModel.navigateTo(Screen.WorkerRequests)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            testTag = "worker_completed_back_cta"
+                        )
+                    }
                 }
             }
         }
@@ -385,16 +653,25 @@ fun ServiceStatusAction(
     title: String,
     subtitle: String,
     isActive: Boolean,
+    isDone: Boolean = isActive,
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick() }
+            .then(if (enabled) Modifier.clickable { onClick() } else Modifier)
             .testTag("status_action_${title.take(3)}"),
         shape = RoundedCornerShape(12.dp),
-        color = if (isActive) Color(0xFFD6F2F5) else Color(0xFFF8FAFC),
-        border = BorderStroke(1.dp, if (isActive) SecondaryTeal else BorderSubtle)
+        color = when {
+            isActive -> Color(0xFFD6F2F5)
+            isDone -> Color(0xFFECFEFF)
+            else -> Color(0xFFF8FAFC)
+        },
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (isActive || isDone) SecondaryTeal else BorderSubtle
+        )
     ) {
         Row(
             modifier = Modifier.padding(14.dp),
@@ -403,10 +680,14 @@ fun ServiceStatusAction(
             Surface(
                 modifier = Modifier.size(24.dp),
                 shape = CircleShape,
-                color = if (isActive) SecondaryTeal else Color(0xFFCBD5E1)
+                color = when {
+                    isActive || isDone -> SecondaryTeal
+                    enabled -> Color(0xFF94A3B8)
+                    else -> Color(0xFFCBD5E1)
+                }
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    if (isActive) {
+                    if (isActive || isDone) {
                         Icon(Icons.Default.Check, contentDescription = null, tint = SurfaceWhite, modifier = Modifier.size(16.dp))
                     }
                 }
@@ -417,7 +698,7 @@ fun ServiceStatusAction(
                     text = title,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
-                    color = PrimaryNavy
+                    color = if (enabled || isDone) PrimaryNavy else TextSecondary
                 )
                 Text(
                     text = subtitle,
@@ -435,8 +716,7 @@ fun WorkerProfileScreen(viewModel: OficiosViewModel) {
     val currentUser by viewModel.currentUser.collectAsState()
     val professionals by viewModel.professionals.collectAsState()
 
-    val workerPro = professionals.find { it.userId == currentUser.id || it.id == "pro_mateo" }
-        ?: professionals.first()
+    val workerPro = resolveWorkerProfessional(professionals, currentUser)
 
     Column(
         modifier = Modifier
@@ -462,16 +742,31 @@ fun WorkerProfileScreen(viewModel: OficiosViewModel) {
                 }
             },
             actions = {
-                IconButton(onClick = { viewModel.navigateTo(Screen.WorkerEditProfile) }) {
-                    Icon(
-                        imageVector = Icons.Default.Edit,
-                        contentDescription = "Editar perfil",
-                        tint = SecondaryTeal
-                    )
+                if (workerPro != null) {
+                    IconButton(onClick = {
+                        viewModel.resetProfileActionState()
+                        viewModel.navigateTo(Screen.WorkerEditProfile)
+                    }) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "Editar perfil",
+                            tint = SecondaryTeal
+                        )
+                    }
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundSoft)
         )
+
+        if (workerPro == null) {
+            EmptyStateView(
+                title = "Perfil profesional en sincronización",
+                message = "No se encontró tu ficha profesional sincronizada aún. Puedes actualizar los datos o volver al inicio.",
+                actionText = "Sincronizar datos",
+                onActionClick = { viewModel.loadDataFromSupabase() }
+            )
+            return
+        }
 
         Column(
             modifier = Modifier
@@ -607,6 +902,13 @@ fun WorkerProfileScreen(viewModel: OficiosViewModel) {
                 modifier = Modifier.fillMaxWidth(),
                 testTag = "edit_profile_cta_btn"
             )
+
+            OficiosOutlinedButton(
+                text = "Cerrar sesión",
+                onClick = { viewModel.logout() },
+                modifier = Modifier.fillMaxWidth(),
+                testTag = "worker_logout_btn"
+            )
         }
     }
 }
@@ -616,17 +918,18 @@ fun WorkerProfileScreen(viewModel: OficiosViewModel) {
 fun WorkerEditProfileScreen(viewModel: OficiosViewModel) {
     val currentUser by viewModel.currentUser.collectAsState()
     val professionals by viewModel.professionals.collectAsState()
+    val profileActionState by viewModel.profileActionState.collectAsState()
 
-    val workerPro = professionals.find { it.userId == currentUser.id || it.id == "pro_mateo" }
-        ?: professionals.first()
+    val workerPro = resolveWorkerProfessional(professionals, currentUser)
+    val isSaving = profileActionState is ProfileActionUiState.Loading
 
-    var name by remember(workerPro) { mutableStateOf(workerPro.name) }
+    var name by remember(workerPro, currentUser) { mutableStateOf(workerPro?.name ?: currentUser.name) }
     var phone by remember(currentUser) { mutableStateOf(currentUser.phone) }
-    var profession by remember(workerPro) { mutableStateOf(workerPro.profession) }
-    var desc by remember(workerPro) { mutableStateOf(workerPro.description) }
-    var expYears by remember(workerPro) { mutableIntStateOf(workerPro.experienceYears) }
-    var available by remember(workerPro) { mutableStateOf(workerPro.available) }
-    var location by remember(workerPro) { mutableStateOf(workerPro.locationName) }
+    var profession by remember(workerPro) { mutableStateOf(workerPro?.profession ?: "Plomero") }
+    var desc by remember(workerPro) { mutableStateOf(workerPro?.description ?: "") }
+    var expYears by remember(workerPro) { mutableIntStateOf(workerPro?.experienceYears ?: 1) }
+    var available by remember(workerPro) { mutableStateOf(workerPro?.available ?: true) }
+    var location by remember(workerPro, currentUser) { mutableStateOf(workerPro?.locationName ?: currentUser.location) }
 
     Column(
         modifier = Modifier
@@ -666,7 +969,8 @@ fun WorkerEditProfileScreen(viewModel: OficiosViewModel) {
                 onValueChange = { name = it },
                 label = { Text("Nombre completo") },
                 modifier = Modifier.fillMaxWidth().testTag("worker_edit_name"),
-                singleLine = true
+                singleLine = true,
+                colors = oficiosTextFieldColors()
             )
 
             OutlinedTextField(
@@ -674,7 +978,8 @@ fun WorkerEditProfileScreen(viewModel: OficiosViewModel) {
                 onValueChange = { phone = it },
                 label = { Text("Teléfono de contacto") },
                 modifier = Modifier.fillMaxWidth().testTag("worker_edit_phone"),
-                singleLine = true
+                singleLine = true,
+                colors = oficiosTextFieldColors()
             )
 
             OutlinedTextField(
@@ -682,14 +987,62 @@ fun WorkerEditProfileScreen(viewModel: OficiosViewModel) {
                 onValueChange = { profession = it },
                 label = { Text("Profesión / Título") },
                 modifier = Modifier.fillMaxWidth().testTag("worker_edit_profession"),
-                singleLine = true
+                singleLine = true,
+                colors = oficiosTextFieldColors()
             )
+
+            // Sugerencias de oficios oficiales para actualizar rápidamente
+            val tradeSuggestions = listOf(
+                "Plomero",
+                "Electricista",
+                "Carpintero",
+                "Pintor",
+                "Cerrajero",
+                "Técnico de electrodomésticos"
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                tradeSuggestions.forEach { suggestion ->
+                    val isSelected = profession.equals(suggestion, ignoreCase = true)
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = if (isSelected) SecondaryTeal else BackgroundSoft,
+                        border = if (isSelected) null else androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFCFD8DC)),
+                        modifier = Modifier
+                            .clickable { profession = suggestion }
+                            .testTag("suggestion_chip_${suggestion.lowercase().replace(" ", "_")}")
+                    ) {
+                        Text(
+                            text = suggestion,
+                            fontSize = 12.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isSelected) SurfaceWhite else PrimaryNavy,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+            }
 
             OutlinedTextField(
                 value = desc,
                 onValueChange = { desc = it },
                 label = { Text("Descripción profesional") },
-                modifier = Modifier.fillMaxWidth().height(100.dp).testTag("worker_edit_desc")
+                modifier = Modifier.fillMaxWidth().height(100.dp).testTag("worker_edit_desc"),
+                colors = oficiosTextFieldColors()
+            )
+
+            OutlinedTextField(
+                value = expYears.toString(),
+                onValueChange = { expYears = it.filter { char -> char.isDigit() }.toIntOrNull() ?: 0 },
+                label = { Text("Años de experiencia") },
+                modifier = Modifier.fillMaxWidth().testTag("worker_edit_exp_years"),
+                singleLine = true,
+                colors = oficiosTextFieldColors()
             )
 
             OutlinedTextField(
@@ -697,7 +1050,8 @@ fun WorkerEditProfileScreen(viewModel: OficiosViewModel) {
                 onValueChange = { location = it },
                 label = { Text("Zona o ubicación") },
                 modifier = Modifier.fillMaxWidth().testTag("worker_edit_location"),
-                singleLine = true
+                singleLine = true,
+                colors = oficiosTextFieldColors()
             )
 
             Card(
@@ -734,13 +1088,30 @@ fun WorkerEditProfileScreen(viewModel: OficiosViewModel) {
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            if (profileActionState is ProfileActionUiState.Error) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFFFEE2E2),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = (profileActionState as ProfileActionUiState.Error).message,
+                        color = Color(0xFFB91C1C),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
 
             OficiosButton(
-                text = "Guardar cambios",
+                text = if (isSaving) "Guardando cambios..." else "Guardar cambios",
                 onClick = {
                     viewModel.updateWorkerProfile(name, phone, profession, desc, expYears, available, location)
                 },
+                enabled = !isSaving,
                 modifier = Modifier.fillMaxWidth(),
                 testTag = "save_worker_profile_btn"
             )
@@ -754,8 +1125,7 @@ fun WorkerReviewsScreen(viewModel: OficiosViewModel) {
     val currentUser by viewModel.currentUser.collectAsState()
     val professionals by viewModel.professionals.collectAsState()
 
-    val workerPro = professionals.find { it.userId == currentUser.id || it.id == "pro_mateo" }
-        ?: professionals.first()
+    val workerPro = resolveWorkerProfessional(professionals, currentUser)
 
     Column(
         modifier = Modifier
@@ -780,85 +1150,106 @@ fun WorkerReviewsScreen(viewModel: OficiosViewModel) {
                     )
                 }
             },
+            actions = {
+                IconButton(
+                    onClick = { viewModel.loadDataFromSupabase() },
+                    modifier = Modifier.testTag("worker_reviews_refresh_btn")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Actualizar reseñas",
+                        tint = PrimaryNavy
+                    )
+                }
+            },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundSoft)
         )
 
-        LazyColumn(
-            contentPadding = PaddingValues(20.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            // General Rating Header
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = SurfaceWhite),
-                    elevation = CardDefaults.cardElevation(2.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(20.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = workerPro.rating.toString(),
-                            fontSize = 38.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = PrimaryNavy
-                        )
-                        RatingStars(rating = workerPro.rating, starSize = 22.dp)
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "Basado en ${workerPro.reviews.size} reseñas de clientes",
-                            fontSize = 13.sp,
-                            color = TextSecondary
-                        )
-                    }
-                }
-            }
-
-            if (workerPro.reviews.isEmpty()) {
+        if (workerPro == null) {
+            EmptyStateView(
+                title = "Sin ficha profesional activa",
+                message = "Sincroniza tus datos para consultar tus reseñas y calificación promedio.",
+                actionText = "Sincronizar",
+                onActionClick = { viewModel.loadDataFromSupabase() }
+            )
+        } else {
+            LazyColumn(
+                contentPadding = PaddingValues(20.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                // General Rating Header
                 item {
-                    EmptyStateView(
-                        title = "Sin reseñas aún",
-                        message = "Tus calificaciones aparecerán aquí cuando los clientes finalicen sus servicios."
-                    )
-                }
-            } else {
-                items(workerPro.reviews) { rev ->
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(16.dp),
                         colors = CardDefaults.cardColors(containerColor = SurfaceWhite),
-                        elevation = CardDefaults.cardElevation(1.dp)
+                        elevation = CardDefaults.cardElevation(2.dp)
                     ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = rev.clientName,
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = PrimaryNavy
-                                )
-                                RatingStars(rating = rev.rating, starSize = 14.dp)
-                            }
-
+                        Column(
+                            modifier = Modifier.padding(20.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
                             Text(
-                                text = rev.comment,
+                                text = if (workerPro.rating > 0.0) workerPro.rating.toString() else "Nuevo",
+                                fontSize = 38.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = PrimaryNavy
+                            )
+                            RatingStars(rating = workerPro.rating, starSize = 22.dp)
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "Basado en ${workerPro.reviews.size} reseñas de clientes",
                                 fontSize = 13.sp,
-                                color = TextPrimary,
-                                modifier = Modifier.padding(top = 6.dp)
+                                color = TextSecondary
                             )
+                        }
+                    }
+                }
 
-                            Text(
-                                text = rev.date,
-                                fontSize = 11.sp,
-                                color = TextSecondary,
-                                modifier = Modifier.padding(top = 4.dp)
-                            )
+                if (workerPro.reviews.isEmpty()) {
+                    item {
+                        EmptyStateView(
+                            title = "Sin reseñas aún",
+                            message = "Tus calificaciones aparecerán aquí cuando los clientes finalicen sus servicios."
+                        )
+                    }
+                } else {
+                    items(workerPro.reviews) { rev ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.cardColors(containerColor = SurfaceWhite),
+                            elevation = CardDefaults.cardElevation(1.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = rev.clientName,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = PrimaryNavy
+                                    )
+                                    RatingStars(rating = rev.rating, starSize = 14.dp)
+                                }
+
+                                Text(
+                                    text = rev.comment,
+                                    fontSize = 13.sp,
+                                    color = TextPrimary,
+                                    modifier = Modifier.padding(top = 6.dp)
+                                )
+
+                                Text(
+                                    text = rev.date,
+                                    fontSize = 11.sp,
+                                    color = TextSecondary,
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                            }
                         }
                     }
                 }

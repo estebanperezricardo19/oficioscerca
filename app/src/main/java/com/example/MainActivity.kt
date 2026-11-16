@@ -1,3 +1,4 @@
+
 package com.example
 
 import android.os.Bundle
@@ -44,11 +45,13 @@ import com.example.viewmodel.OficiosViewModel
 import com.example.viewmodel.Screen
 
 class MainActivity : ComponentActivity() {
+
     private val viewModel: OficiosViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
         setContent {
             OficiosCercaTheme {
                 OficiosApp(viewModel = viewModel)
@@ -62,7 +65,7 @@ fun OficiosApp(viewModel: OficiosViewModel) {
     val currentScreen by viewModel.currentScreen.collectAsState()
 
     // Handle system back navigation cleanly
-    BackHandler(enabled = currentScreen !is Screen.Welcome) {
+    BackHandler(enabled = currentScreen !is Screen.Login && currentScreen !is Screen.Welcome) {
         viewModel.navigateBack()
     }
 
@@ -101,24 +104,33 @@ fun OficiosApp(viewModel: OficiosViewModel) {
                 is Screen.ClientSearch -> ClientSearchScreen(viewModel)
                 is Screen.ClientResults -> ClientResultsScreen(viewModel)
                 is Screen.ClientMap -> ClientMapScreen(viewModel)
-                is Screen.ClientProfessionalDetail -> ClientProfessionalDetailScreen(viewModel)
-                is Screen.ClientRequestService -> ClientRequestServiceScreen(viewModel)
-                is Screen.ClientConfirmRequest -> ClientConfirmRequestScreen(viewModel)
-                is Screen.ClientRequestSent -> ClientRequestSentScreen(viewModel)
+                is Screen.ClientProfessionalDetail ->
+                    ClientProfessionalDetailScreen(viewModel)
+                is Screen.ClientRequestService ->
+                    ClientRequestServiceScreen(viewModel)
+                is Screen.ClientConfirmRequest ->
+                    ClientConfirmRequestScreen(viewModel)
+                is Screen.ClientRequestSent ->
+                    ClientRequestSentScreen(viewModel)
                 is Screen.ClientTracking -> ClientTrackingScreen(viewModel)
                 is Screen.ClientRating -> ClientRatingScreen(viewModel)
                 is Screen.ClientHistory -> ClientHistoryScreen(viewModel)
                 is Screen.ClientProfile -> ClientProfileScreen(viewModel)
-                is Screen.ClientNotifications -> ClientNotificationsScreen(viewModel)
+                is Screen.ClientNotifications ->
+                    ClientNotificationsScreen(viewModel)
 
                 // Worker flow
                 is Screen.WorkerHome -> WorkerHomeScreen(viewModel)
                 is Screen.WorkerRequests -> WorkerRequestsScreen(viewModel)
-                is Screen.WorkerRequestDetail -> WorkerRequestDetailScreen(viewModel)
-                is Screen.WorkerActiveService -> WorkerActiveServiceScreen(viewModel)
+                is Screen.WorkerRequestDetail ->
+                    WorkerRequestDetailScreen(viewModel)
+                is Screen.WorkerActiveService ->
+                    WorkerActiveServiceScreen(viewModel)
                 is Screen.WorkerProfile -> WorkerProfileScreen(viewModel)
-                is Screen.WorkerEditProfile -> WorkerEditProfileScreen(viewModel)
+                is Screen.WorkerEditProfile ->
+                    WorkerEditProfileScreen(viewModel)
                 is Screen.WorkerReviews -> WorkerReviewsScreen(viewModel)
+                is Screen.WorkerNotifications -> ClientNotificationsScreen(viewModel)
             }
         }
     }

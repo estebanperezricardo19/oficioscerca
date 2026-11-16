@@ -23,6 +23,8 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
@@ -54,10 +56,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.Professional
 import com.example.ui.components.EmptyStateView
+import com.example.ui.components.OficiosButton
 import com.example.ui.components.UserAvatar
 import com.example.ui.theme.AccentCyan
 import com.example.ui.theme.BackgroundSoft
@@ -68,6 +73,7 @@ import com.example.ui.theme.StarGold
 import com.example.ui.theme.SurfaceWhite
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
+import com.example.ui.theme.oficiosTextFieldColors
 import com.example.viewmodel.OficiosViewModel
 import com.example.viewmodel.Screen
 
@@ -128,17 +134,25 @@ fun ClientSearchScreen(viewModel: OficiosViewModel) {
                         }
                     }
                 },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(
+                    onSearch = { viewModel.navigateTo(Screen.ClientResults) }
+                ),
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("search_input_field"),
                 singleLine = true,
                 shape = RoundedCornerShape(12.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = SecondaryTeal,
-                    unfocusedBorderColor = BorderSubtle,
-                    focusedContainerColor = SurfaceWhite,
-                    unfocusedContainerColor = SurfaceWhite
-                )
+                colors = oficiosTextFieldColors()
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            OficiosButton(
+                text = if (searchQuery.isNotBlank()) "Buscar \"$searchQuery\"" else "Explorar todos los profesionales",
+                onClick = { viewModel.navigateTo(Screen.ClientResults) },
+                modifier = Modifier.fillMaxWidth(),
+                testTag = "search_submit_btn"
             )
 
             Spacer(modifier = Modifier.height(20.dp))
@@ -273,7 +287,7 @@ fun ClientResultsScreen(viewModel: OficiosViewModel) {
             list = list.filter { it.available }
         }
         when {
-            sortByDistance -> list.sortedBy { it.distanceKm }
+            sortByDistance -> list.sortedBy { if (it.distanceKm > 0.0) it.distanceKm else Double.MAX_VALUE }
             sortByRating -> list.sortedByDescending { it.rating }
             else -> list
         }
@@ -475,15 +489,18 @@ fun DetailedWorkerCard(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
-                            text = "${professional.servicesCompleted} servicios",
+                            text = "${professional.servicesCompleted} reseñas",
                             fontSize = 12.sp,
                             color = TextSecondary
                         )
                         Text(text = "•", color = BorderSubtle)
                         Text(
-                            text = "${professional.distanceKm} km",
+                            text = if (professional.distanceKm > 0.0) "${professional.distanceKm} km" else professional.locationName.ifBlank { "Medellín" },
                             fontSize = 12.sp,
-                            color = TextSecondary
+                            color = TextSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
                         )
                         Text(text = "•", color = BorderSubtle)
                         Surface(

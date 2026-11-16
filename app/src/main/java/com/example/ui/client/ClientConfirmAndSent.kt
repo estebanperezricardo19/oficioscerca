@@ -1,6 +1,5 @@
 package com.example.ui.client
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,13 +18,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -36,6 +35,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -54,6 +54,7 @@ import com.example.ui.theme.SecondaryTeal
 import com.example.ui.theme.SurfaceWhite
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
+import com.example.viewmodel.CreateRequestUiState
 import com.example.viewmodel.OficiosViewModel
 import com.example.viewmodel.Screen
 
@@ -61,12 +62,21 @@ import com.example.viewmodel.Screen
 @Composable
 fun ClientConfirmRequestScreen(viewModel: OficiosViewModel) {
     val pro by viewModel.selectedProfessional.collectAsState()
+    val categories by viewModel.categories.collectAsState()
+    val selectedCatId by viewModel.selectedCategoryIdForRequest.collectAsState()
     val desc by viewModel.draftDescription.collectAsState()
     val date by viewModel.draftDate.collectAsState()
     val time by viewModel.draftTime.collectAsState()
     val loc by viewModel.draftLocation.collectAsState()
+    val createState by viewModel.createRequestState.collectAsState()
 
     val professional = pro ?: return
+
+    val selectedCategoryName = remember(selectedCatId, categories, professional) {
+        val cat = categories.find { it.id == selectedCatId }
+        cat?.name ?: professional.servicesList.find { it.categoryId == selectedCatId }?.categoryName
+        ?: professional.profession
+    }
 
     Column(
         modifier = Modifier
@@ -121,27 +131,28 @@ fun ClientConfirmRequestScreen(viewModel: OficiosViewModel) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         UserAvatar(
                             initial = professional.avatarInitial,
-                            size = 44.dp,
+                            size = 46.dp,
                             backgroundColor = PrimaryNavy,
                             textColor = AccentCyan
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text(
-                                text = "Profesional:",
+                                text = "Profesional asignado:",
                                 fontSize = 12.sp,
                                 color = TextSecondary
                             )
                             Text(
                                 text = professional.name,
-                                fontSize = 15.sp,
+                                fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = PrimaryNavy
                             )
                             Text(
                                 text = professional.profession,
                                 fontSize = 13.sp,
-                                color = SecondaryTeal
+                                color = SecondaryTeal,
+                                fontWeight = FontWeight.Medium
                             )
                         }
                     }
@@ -156,7 +167,22 @@ fun ClientConfirmRequestScreen(viewModel: OficiosViewModel) {
                     Spacer(modifier = Modifier.height(14.dp))
 
                     Text(
-                        text = "Problema o requerimiento:",
+                        text = "Servicio solicitado:",
+                        fontSize = 12.sp,
+                        color = TextSecondary
+                    )
+                    Text(
+                        text = selectedCategoryName,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = PrimaryNavy,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text(
+                        text = "Problema o necesidad:",
                         fontSize = 12.sp,
                         color = TextSecondary
                     )
@@ -175,19 +201,36 @@ fun ClientConfirmRequestScreen(viewModel: OficiosViewModel) {
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column {
-                            Text(text = "Fecha:", fontSize = 12.sp, color = TextSecondary)
+                            Text(text = "Fecha estimada:", fontSize = 12.sp, color = TextSecondary)
                             Text(text = date, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = PrimaryNavy)
                         }
                         Column {
-                            Text(text = "Hora:", fontSize = 12.sp, color = TextSecondary)
+                            Text(text = "Horario:", fontSize = 12.sp, color = TextSecondary)
                             Text(text = time, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = PrimaryNavy)
                         }
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    Text(text = "Ubicación:", fontSize = 12.sp, color = TextSecondary)
-                    Text(text = loc, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = PrimaryNavy)
+                    Text(text = "Ubicación del trabajo:", fontSize = 12.sp, color = TextSecondary)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(top = 2.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.LocationOn,
+                            contentDescription = null,
+                            tint = SecondaryTeal,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = loc,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = PrimaryNavy
+                        )
+                    }
                 }
             }
 
@@ -216,9 +259,36 @@ fun ClientConfirmRequestScreen(viewModel: OficiosViewModel) {
                     )
                 }
             }
+
+            // Error de envío si ocurrió
+            if (createState is CreateRequestUiState.Error) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFFFEE2E2),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ErrorOutline,
+                            contentDescription = null,
+                            tint = Color(0xFFDC2626),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = (createState as CreateRequestUiState.Error).message,
+                            fontSize = 13.sp,
+                            color = Color(0xFF991B1B)
+                        )
+                    }
+                }
+            }
         }
 
-        // Botón Enviar solicitud
+        // Botón Enviar solicitud con prevención de doble envío
         Surface(
             modifier = Modifier.fillMaxWidth(),
             color = SurfaceWhite,
@@ -229,11 +299,14 @@ fun ClientConfirmRequestScreen(viewModel: OficiosViewModel) {
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp, vertical = 14.dp)
             ) {
+                val isLoading = createState is CreateRequestUiState.Loading
+
                 OficiosButton(
-                    text = "Enviar solicitud",
+                    text = if (isLoading) "Enviando a Supabase..." else "Enviar solicitud",
                     onClick = {
                         viewModel.confirmDraftAndSend()
                     },
+                    enabled = !isLoading,
                     modifier = Modifier.fillMaxWidth(),
                     testTag = "send_request_confirm_btn"
                 )
@@ -246,6 +319,16 @@ fun ClientConfirmRequestScreen(viewModel: OficiosViewModel) {
 fun ClientRequestSentScreen(viewModel: OficiosViewModel) {
     val pro by viewModel.selectedProfessional.collectAsState()
     val activeTrackingId by viewModel.activeTrackingRequestId.collectAsState()
+    val categories by viewModel.categories.collectAsState()
+    val selectedCatId by viewModel.selectedCategoryIdForRequest.collectAsState()
+    val desc by viewModel.draftDescription.collectAsState()
+    val loc by viewModel.draftLocation.collectAsState()
+
+    val selectedCategoryName = remember(selectedCatId, categories, pro) {
+        val cat = categories.find { it.id == selectedCatId }
+        cat?.name ?: pro?.servicesList?.find { it.categoryId == selectedCatId }?.categoryName
+        ?: pro?.profession ?: "Servicio general"
+    }
 
     Column(
         modifier = Modifier
@@ -273,15 +356,16 @@ fun ClientRequestSentScreen(viewModel: OficiosViewModel) {
         Spacer(modifier = Modifier.height(20.dp))
 
         Text(
-            text = "¡Solicitud enviada!",
-            fontSize = 24.sp,
+            text = "¡Solicitud enviada correctamente!",
+            fontSize = 22.sp,
             fontWeight = FontWeight.Bold,
-            color = PrimaryNavy
+            color = PrimaryNavy,
+            textAlign = TextAlign.Center
         )
 
         Text(
-            text = "Tu solicitud fue enviada a ${pro?.name ?: "el profesional"}.",
-            fontSize = 15.sp,
+            text = "Tu requerimiento fue registrado en el sistema y enviado a ${pro?.name ?: "el profesional"}.",
+            fontSize = 14.sp,
             color = TextSecondary,
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(top = 8.dp)
@@ -304,7 +388,7 @@ fun ClientRequestSentScreen(viewModel: OficiosViewModel) {
                     color = Color(0xFFFEF3C7)
                 ) {
                     Text(
-                        text = "Estado: Esperando respuesta",
+                        text = "Estado: Pendiente de respuesta",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFFD97706),
@@ -315,27 +399,44 @@ fun ClientRequestSentScreen(viewModel: OficiosViewModel) {
                 Spacer(modifier = Modifier.height(14.dp))
 
                 Text(
-                    text = pro?.name ?: "Mateo Ramírez",
-                    fontSize = 16.sp,
+                    text = pro?.name ?: "Profesional de oficio",
+                    fontSize = 17.sp,
                     fontWeight = FontWeight.Bold,
                     color = PrimaryNavy
                 )
                 Text(
-                    text = "Servicio de ${pro?.profession ?: "Plomería"}",
+                    text = "Servicio de $selectedCategoryName",
                     fontSize = 14.sp,
-                    color = SecondaryTeal
+                    color = SecondaryTeal,
+                    fontWeight = FontWeight.Medium
                 )
+
+                if (loc.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.LocationOn,
+                            contentDescription = null,
+                            tint = SecondaryTeal,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = loc,
+                            fontSize = 13.sp,
+                            color = TextSecondary
+                        )
+                    }
+                }
             }
         }
 
         Spacer(modifier = Modifier.height(32.dp))
 
         OficiosButton(
-            text = "Ver solicitud",
+            text = "Ver mis solicitudes",
             onClick = {
-                activeTrackingId?.let { id ->
-                    viewModel.openTracking(id)
-                } ?: viewModel.navigateTo(Screen.ClientHistory)
+                viewModel.navigateTo(Screen.ClientHistory)
             },
             modifier = Modifier.fillMaxWidth(),
             testTag = "view_sent_request_btn"

@@ -24,7 +24,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.Assignment
+import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
@@ -77,14 +77,59 @@ import com.example.ui.theme.TextSecondary
 import com.example.viewmodel.OficiosViewModel
 import com.example.viewmodel.Screen
 
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import com.example.model.Professional
+import com.example.model.UserProfile
+import com.example.service.AuthService
+import com.example.viewmodel.WorkerRequestsUiState
+import com.example.viewmodel.WorkerActionUiState
+
+internal fun resolveWorkerProfessional(
+    professionals: List<Professional>,
+    currentUser: UserProfile
+): Professional? {
+    val authId = AuthService.currentUserId()
+    val matched = professionals.find {
+        it.userId == currentUser.id || (authId != null && it.userId == authId)
+    }
+    if (matched != null) return matched
+    return if (authId == null) {
+        professionals.find { it.id == "pro_mateo" } ?: professionals.firstOrNull()
+    } else {
+        null
+    }
+}
+
 @Composable
 fun WorkerHomeScreen(viewModel: OficiosViewModel) {
     val currentUser by viewModel.currentUser.collectAsState()
     val professionals by viewModel.professionals.collectAsState()
-    val requests by viewModel.requests.collectAsState()
+    val requestsState by viewModel.workerRequestsState.collectAsState()
+    val actionState by viewModel.workerActionState.collectAsState()
+    val notifications by viewModel.notifications.collectAsState()
+    val unreadCount = notifications.count { !it.read }
 
-    val workerPro = professionals.find { it.userId == currentUser.id || it.id == "pro_mateo" }
-        ?: professionals.first()
+    val workerPro = resolveWorkerProfessional(professionals, currentUser)
+    val displayName = (workerPro?.name ?: currentUser.name).ifBlank { "Profesional" }.split(" ").first()
+    val displayProfession = workerPro?.profession?.ifBlank { "Profesional de oficio" } ?: "Perfil profesional"
+    val isAvailable = workerPro?.available ?: false
+    val ratingText = if ((workerPro?.rating ?: 0.0) > 0.0) "${workerPro?.rating} ★" else "Nuevo"
+
+    val requests = when (requestsState) {
+        is WorkerRequestsUiState.Success -> (requestsState as WorkerRequestsUiState.Success).requests
+        else -> emptyList()
+    }
 
     val pendingCount = requests.count { it.status == ServiceStatus.PENDING }
     val activeCount = requests.count { it.status == ServiceStatus.ACCEPTED || it.status == ServiceStatus.ON_THE_WAY || it.status == ServiceStatus.IN_PROGRESS }
@@ -109,41 +154,81 @@ fun WorkerHomeScreen(viewModel: OficiosViewModel) {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Hola, ${workerPro.name.split(" ").first()} 👋",
+                            text = "Hola, $displayName 👋",
                             fontSize = 22.sp,
                             fontWeight = FontWeight.Bold,
                             color = SurfaceWhite
                         )
                         Text(
-                            text = workerPro.profession,
+                            text = displayProfession,
                             fontSize = 14.sp,
                             color = AccentCyan,
                             modifier = Modifier.padding(top = 2.dp)
                         )
                     }
 
-                    Surface(
-                        shape = RoundedCornerShape(20.dp),
-                        color = if (workerPro.available) Color(0xFF10B981) else Color(0xFF6B7280)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = {
+                                viewModel.loadDataFromSupabase()
+                                viewModel.loadWorkerRequests(forceRefresh = true)
+                                viewModel.refreshNotifications()
+                            },
+                            modifier = Modifier.testTag("worker_home_refresh_btn")
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .background(SurfaceWhite, CircleShape)
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Actualizar",
+                                tint = SurfaceWhite
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = if (workerPro.available) "Disponible" else "No disponible",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = SurfaceWhite
-                            )
+                        }
+
+                        IconButton(
+                            onClick = { viewModel.navigateTo(Screen.WorkerNotifications) },
+                            modifier = Modifier.testTag("worker_home_notif_btn")
+                        ) {
+                            BadgedBox(
+                                badge = {
+                                    if (unreadCount > 0) {
+                                        Badge(containerColor = AccentCyan, contentColor = PrimaryNavy) {
+                                            Text(text = unreadCount.toString())
+                                        }
+                                    }
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Notifications,
+                                    contentDescription = "Notificaciones",
+                                    tint = SurfaceWhite
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(4.dp))
+
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = if (isAvailable) Color(0xFF10B981) else Color(0xFF6B7280)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .background(SurfaceWhite, CircleShape)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = if (isAvailable) "Disponible" else "Ocupado",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = SurfaceWhite
+                                )
+                            }
                         }
                     }
                 }
@@ -178,10 +263,30 @@ fun WorkerHomeScreen(viewModel: OficiosViewModel) {
                     )
                     WorkerStatBadge(
                         title = "Calificación",
-                        value = "${workerPro.rating} ★",
+                        value = ratingText,
                         modifier = Modifier.weight(1f),
                         badgeColor = Color(0xFFFEF9C3),
                         textColor = Color(0xFFCA8A04)
+                    )
+                }
+            }
+        }
+
+        if (actionState is WorkerActionUiState.Error) {
+            item {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFFFEE2E2),
+                    border = BorderStroke(1.dp, Color(0xFFEF4444)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        text = (actionState as WorkerActionUiState.Error).message,
+                        color = Color(0xFFB91C1C),
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(12.dp)
                     )
                 }
             }
@@ -205,7 +310,7 @@ fun WorkerHomeScreen(viewModel: OficiosViewModel) {
                 ) {
                     WorkerQuickAction(
                         title = "Ver solicitudes",
-                        icon = Icons.Default.Assignment,
+                        icon = Icons.AutoMirrored.Filled.Assignment,
                         onClick = { viewModel.navigateTo(Screen.WorkerRequests) },
                         modifier = Modifier.weight(1f)
                     )
@@ -276,19 +381,60 @@ fun WorkerHomeScreen(viewModel: OficiosViewModel) {
             }
         }
 
-        items(requests.take(3)) { req ->
-            WorkerRequestItemCard(
-                request = req,
-                onViewDetail = { viewModel.openWorkerRequestDetail(req.id) },
-                onAccept = {
-                    viewModel.updateRequestStatusExplicit(req.id, ServiceStatus.ACCEPTED)
-                    viewModel.openWorkerActiveService(req.id)
-                },
-                onReject = {
-                    viewModel.updateRequestStatusExplicit(req.id, ServiceStatus.CANCELLED)
-                },
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)
-            )
+        when (requestsState) {
+            is WorkerRequestsUiState.Loading -> {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(30.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = SecondaryTeal)
+                    }
+                }
+            }
+            is WorkerRequestsUiState.Error -> {
+                item {
+                    EmptyStateView(
+                        title = "Error al cargar solicitudes",
+                        message = (requestsState as WorkerRequestsUiState.Error).message,
+                        actionText = "Reintentar",
+                        onActionClick = { viewModel.loadWorkerRequests(forceRefresh = true) }
+                    )
+                }
+            }
+            is WorkerRequestsUiState.Success -> {
+                val list = (requestsState as WorkerRequestsUiState.Success).requests
+                if (list.isEmpty()) {
+                    item {
+                        EmptyStateView(
+                            title = "No tienes solicitudes recientes",
+                            message = "Cuando un cliente solicite tus servicios aparecerán aquí."
+                        )
+                    }
+                } else {
+                    items(list.take(3)) { req ->
+                        val isActingOnThis = actionState is WorkerActionUiState.Loading &&
+                                (actionState as WorkerActionUiState.Loading).requestId == req.id
+
+                        WorkerRequestItemCard(
+                            request = req,
+                            isActionInProgress = isActingOnThis,
+                            onViewDetail = { viewModel.openWorkerRequestDetail(req.id) },
+                            onAccept = {
+                                viewModel.acceptWorkerRequest(req.id) {
+                                    viewModel.openWorkerActiveService(req.id)
+                                }
+                            },
+                            onReject = {
+                                viewModel.rejectWorkerRequest(req.id)
+                            },
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+            }
         }
 
         // Switch to Client Role shortcut
@@ -389,6 +535,7 @@ fun WorkerQuickAction(
 @Composable
 fun WorkerRequestItemCard(
     request: ServiceRequest,
+    isActionInProgress: Boolean = false,
     onViewDetail: () -> Unit,
     onAccept: () -> Unit,
     onReject: () -> Unit,
@@ -463,22 +610,37 @@ fun WorkerRequestItemCard(
 
             if (request.status == ServiceStatus.PENDING) {
                 Spacer(modifier = Modifier.height(14.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    OficiosOutlinedButton(
-                        text = "Rechazar",
-                        onClick = onReject,
-                        modifier = Modifier.weight(1f),
-                        testTag = "reject_btn_${request.id}"
-                    )
-                    OficiosButton(
-                        text = "Aceptar",
-                        onClick = onAccept,
-                        modifier = Modifier.weight(1f),
-                        testTag = "accept_btn_${request.id}"
-                    )
+                if (isActionInProgress) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            color = SecondaryTeal,
+                            modifier = Modifier.size(24.dp),
+                            strokeWidth = 2.dp
+                        )
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        OficiosOutlinedButton(
+                            text = "Rechazar",
+                            onClick = onReject,
+                            modifier = Modifier.weight(1f),
+                            testTag = "reject_btn_${request.id}"
+                        )
+                        OficiosButton(
+                            text = "Aceptar",
+                            onClick = onAccept,
+                            modifier = Modifier.weight(1f),
+                            testTag = "accept_btn_${request.id}"
+                        )
+                    }
                 }
             }
         }
@@ -488,7 +650,13 @@ fun WorkerRequestItemCard(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WorkerRequestsScreen(viewModel: OficiosViewModel) {
-    val requests by viewModel.requests.collectAsState()
+    val requestsState by viewModel.workerRequestsState.collectAsState()
+    val actionState by viewModel.workerActionState.collectAsState()
+    var selectedTab by remember { mutableStateOf("Todas") }
+
+    LaunchedEffect(Unit) {
+        viewModel.loadWorkerRequests()
+    }
 
     Column(
         modifier = Modifier
@@ -497,12 +665,19 @@ fun WorkerRequestsScreen(viewModel: OficiosViewModel) {
     ) {
         TopAppBar(
             title = {
-                Text(
-                    text = "Solicitudes recibidas",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = PrimaryNavy
-                )
+                Column {
+                    Text(
+                        text = "Solicitudes recibidas",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = PrimaryNavy
+                    )
+                    Text(
+                        text = "Gestiona y responde a tus clientes",
+                        fontSize = 12.sp,
+                        color = TextSecondary
+                    )
+                }
             },
             navigationIcon = {
                 IconButton(onClick = { viewModel.navigateBack() }) {
@@ -513,31 +688,149 @@ fun WorkerRequestsScreen(viewModel: OficiosViewModel) {
                     )
                 }
             },
+            actions = {
+                IconButton(
+                    onClick = { viewModel.loadWorkerRequests(forceRefresh = true) },
+                    modifier = Modifier.testTag("worker_refresh_requests_btn")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Refrescar",
+                        tint = PrimaryNavy
+                    )
+                }
+            },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundSoft)
         )
 
-        if (requests.isEmpty()) {
-            EmptyStateView(
-                title = "No tienes solicitudes",
-                message = "Cuando los clientes soliciten tus servicios aparecerán aquí."
-            )
-        } else {
-            LazyColumn(
-                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+        if (actionState is WorkerActionUiState.Error) {
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = Color(0xFFFEE2E2),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 4.dp)
             ) {
-                items(requests) { req ->
-                    WorkerRequestItemCard(
-                        request = req,
-                        onViewDetail = { viewModel.openWorkerRequestDetail(req.id) },
-                        onAccept = {
-                            viewModel.updateRequestStatusExplicit(req.id, ServiceStatus.ACCEPTED)
-                            viewModel.openWorkerActiveService(req.id)
-                        },
-                        onReject = {
-                            viewModel.updateRequestStatusExplicit(req.id, ServiceStatus.CANCELLED)
-                        }
+                Text(
+                    text = (actionState as WorkerActionUiState.Error).message,
+                    color = Color(0xFFB91C1C),
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(10.dp)
+                )
+            }
+        }
+
+        // Filter Tabs
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            val tabs = listOf("Todas", "Pendientes", "En curso", "Finalizadas / Rechazadas")
+            tabs.forEach { tab ->
+                val isSelected = selectedTab == tab
+                FilterChip(
+                    selected = isSelected,
+                    onClick = { selectedTab = tab },
+                    label = {
+                        Text(
+                            text = tab,
+                            fontSize = 13.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                        )
+                    },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = SecondaryTeal,
+                        selectedLabelColor = SurfaceWhite,
+                        containerColor = SurfaceWhite,
+                        labelColor = TextPrimary
                     )
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        when (requestsState) {
+            is WorkerRequestsUiState.Loading -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(color = SecondaryTeal)
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "Consultando solicitudes recibidas...",
+                            fontSize = 14.sp,
+                            color = TextSecondary
+                        )
+                    }
+                }
+            }
+            is WorkerRequestsUiState.Error -> {
+                EmptyStateView(
+                    title = "Error al consultar solicitudes",
+                    message = (requestsState as WorkerRequestsUiState.Error).message,
+                    actionText = "Reintentar",
+                    onActionClick = { viewModel.loadWorkerRequests(forceRefresh = true) }
+                )
+            }
+            is WorkerRequestsUiState.Success -> {
+                val allRequests = (requestsState as WorkerRequestsUiState.Success).requests
+                val filteredList = when (selectedTab) {
+                    "Pendientes" -> allRequests.filter { it.status == ServiceStatus.PENDING }
+                    "En curso" -> allRequests.filter {
+                        it.status == ServiceStatus.ACCEPTED ||
+                                it.status == ServiceStatus.ON_THE_WAY ||
+                                it.status == ServiceStatus.IN_PROGRESS
+                    }
+                    "Finalizadas / Rechazadas" -> allRequests.filter {
+                        it.status == ServiceStatus.COMPLETED || it.status == ServiceStatus.CANCELLED
+                    }
+                    else -> allRequests
+                }
+
+                if (filteredList.isEmpty()) {
+                    EmptyStateView(
+                        title = when (selectedTab) {
+                            "Pendientes" -> "Sin solicitudes pendientes"
+                            "En curso" -> "Sin servicios en curso"
+                            "Finalizadas / Rechazadas" -> "Sin historial previo"
+                            else -> "No tienes solicitudes"
+                        },
+                        message = "Cuando un cliente solicite tus servicios aparecerán aquí.",
+                        actionText = "Actualizar",
+                        onActionClick = { viewModel.loadWorkerRequests(forceRefresh = true) }
+                    )
+                } else {
+                    LazyColumn(
+                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(filteredList) { req ->
+                            val isActingOnThis = actionState is WorkerActionUiState.Loading &&
+                                    (actionState as WorkerActionUiState.Loading).requestId == req.id
+
+                            WorkerRequestItemCard(
+                                request = req,
+                                isActionInProgress = isActingOnThis,
+                                onViewDetail = { viewModel.openWorkerRequestDetail(req.id) },
+                                onAccept = {
+                                    viewModel.acceptWorkerRequest(req.id) {
+                                        viewModel.openWorkerActiveService(req.id)
+                                    }
+                                },
+                                onReject = {
+                                    viewModel.rejectWorkerRequest(req.id)
+                                }
+                            )
+                        }
+                    }
                 }
             }
         }

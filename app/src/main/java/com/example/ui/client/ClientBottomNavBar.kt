@@ -36,7 +36,7 @@ import com.example.viewmodel.Screen
 enum class ClientTab(val title: String, val targetScreen: Screen) {
     HOME("Inicio", Screen.ClientHome),
     SEARCH("Buscar", Screen.ClientSearch),
-    SERVICES("Servicios", Screen.ClientHistory),
+    SERVICES("Mis solicitudes", Screen.ClientHistory),
     PROFILE("Perfil", Screen.ClientProfile)
 }
 

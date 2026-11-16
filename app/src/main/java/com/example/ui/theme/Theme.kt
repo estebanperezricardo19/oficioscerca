@@ -7,17 +7,22 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.TextFieldColors
+
 private val DarkColorScheme = darkColorScheme(
-    primary = AccentCyan,
-    onPrimary = PrimaryNavy,
+    primary = PrimaryNavy,
+    onPrimary = SurfaceWhite,
     primaryContainer = SecondaryTeal,
-    onPrimaryContainer = Color.White,
-    secondary = AccentCyan,
-    onSecondary = PrimaryNavy,
-    background = Color(0xFF040E2E),
-    surface = Color(0xFF091F47),
-    onBackground = BackgroundSoft,
-    onSurface = BackgroundSoft
+    onPrimaryContainer = SurfaceWhite,
+    secondary = SecondaryTeal,
+    onSecondary = SurfaceWhite,
+    background = BackgroundSoft,
+    surface = SurfaceWhite,
+    onBackground = TextPrimary,
+    onSurface = TextPrimary,
+    onSurfaceVariant = TextSecondary,
+    outline = BorderSubtle
 )
 
 private val LightColorScheme = lightColorScheme(
@@ -40,15 +45,48 @@ private val LightColorScheme = lightColorScheme(
     outline = BorderSubtle
 )
 
+/**
+ * High-contrast, crystal-clear color configuration for all input fields in OficiosCerca.
+ * Prevents white-on-white text, invisible cursor, and low-contrast placeholders.
+ */
+@Composable
+fun oficiosTextFieldColors(): TextFieldColors = OutlinedTextFieldDefaults.colors(
+    focusedTextColor = TextPrimary,
+    unfocusedTextColor = TextPrimary,
+    disabledTextColor = TextSecondary,
+    focusedContainerColor = SurfaceWhite,
+    unfocusedContainerColor = SurfaceWhite,
+    disabledContainerColor = Color(0xFFF1F5F7),
+    cursorColor = SecondaryTeal,
+    errorCursorColor = Color(0xFFB00020),
+    focusedBorderColor = SecondaryTeal,
+    unfocusedBorderColor = BorderSubtle,
+    disabledBorderColor = Color(0xFFE0E0E0),
+    errorBorderColor = Color(0xFFB00020),
+    focusedLabelColor = SecondaryTeal,
+    unfocusedLabelColor = TextSecondary,
+    disabledLabelColor = TextSecondary,
+    errorLabelColor = Color(0xFFB00020),
+    focusedPlaceholderColor = TextSecondary,
+    unfocusedPlaceholderColor = TextSecondary,
+    disabledPlaceholderColor = TextSecondary,
+    focusedLeadingIconColor = SecondaryTeal,
+    unfocusedLeadingIconColor = SecondaryTeal,
+    disabledLeadingIconColor = TextSecondary,
+    focusedTrailingIconColor = SecondaryTeal,
+    unfocusedTrailingIconColor = TextSecondary,
+    disabledTrailingIconColor = TextSecondary
+)
+
 @Composable
 fun OficiosCercaTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit
 ) {
-    val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
-
+    // OficiosCerca has an established bright visual identity with White cards and Soft Backgrounds.
+    // Ensure all typography has high contrast against light surfaces regardless of OS dark-mode setting.
     MaterialTheme(
-        colorScheme = colorScheme,
+        colorScheme = LightColorScheme,
         typography = Typography,
         content = content
     )

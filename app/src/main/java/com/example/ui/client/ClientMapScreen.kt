@@ -63,10 +63,16 @@ import com.example.viewmodel.OficiosViewModel
 @Composable
 fun ClientMapScreen(viewModel: OficiosViewModel) {
     val professionals by viewModel.professionals.collectAsState()
-    var selectedProOnMap by remember { mutableStateOf<Professional?>(professionals.firstOrNull()) }
+    val currentUser by viewModel.currentUser.collectAsState()
+    var selectedProId by remember { mutableStateOf<String?>(null) }
+    var recenterNotice by remember { mutableStateOf(false) }
+
+    val selectedProOnMap = remember(professionals, selectedProId) {
+        professionals.find { it.id == selectedProId } ?: professionals.firstOrNull()
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // Map Canvas simulation with streets, grid lines, and markers
+        // Map Canvas with streets, park and water canal
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
@@ -75,7 +81,6 @@ fun ClientMapScreen(viewModel: OficiosViewModel) {
             val w = size.width
             val h = size.height
 
-            // Simulated map roads & river in Medellín
             drawLine(
                 color = Color(0xFFD0DCE0),
                 start = Offset(0f, h * 0.35f),
@@ -101,14 +106,12 @@ fun ClientMapScreen(viewModel: OficiosViewModel) {
                 strokeWidth = 22f
             )
 
-            // Park green block
             drawRect(
                 color = Color(0xFFD8EDD9),
                 topLeft = Offset(w * 0.45f, h * 0.2f),
                 size = androidx.compose.ui.geometry.Size(w * 0.2f, h * 0.15f)
             )
 
-            // Water canal
             drawLine(
                 color = Color(0xFFBCE6EE),
                 start = Offset(w * 0.85f, 0f),
@@ -128,7 +131,11 @@ fun ClientMapScreen(viewModel: OficiosViewModel) {
                         color = PrimaryNavy
                     )
                     Text(
-                        text = "Laureles y alrededores • Medellín",
+                        text = if (recenterNotice) {
+                            "Mapa centrado en ${currentUser.location.ifBlank { "tu zona" }}"
+                        } else {
+                            "${currentUser.location.ifBlank { "Medellín, Colombia" }} • ${professionals.size} prof."
+                        },
                         fontSize = 12.sp,
                         color = SecondaryTeal
                     )
@@ -169,25 +176,37 @@ fun ClientMapScreen(viewModel: OficiosViewModel) {
             ) {}
         }
 
-        // Professional Map Markers (Positions distributed across map canvas)
-        val markerPositions = listOf(
-            Pair(-100, -120), // Mateo
-            Pair(80, -90),    // Julián
-            Pair(-70, 70),    // Andrés
-            Pair(90, 80),     // Sofía
-            Pair(-110, 0),    // Carlos
-            Pair(40, -160)    // Daniel
+        // Professional Map Markers (dynamically distributed for any list size)
+        val baseOffsets = listOf(
+            Pair(-105, -125),
+            Pair(85, -95),
+            Pair(-75, 70),
+            Pair(90, 75),
+            Pair(-110, -10),
+            Pair(35, -170),
+            Pair(-20, -155),
+            Pair(105, -5)
         )
 
         professionals.forEachIndexed { index, pro ->
-            val pos = markerPositions.getOrElse(index) { Pair(0, 0) }
+            val pos = if (index < baseOffsets.size) {
+                baseOffsets[index]
+            } else {
+                val angle = (index * 60) * (Math.PI / 180.0)
+                val radiusX = 90 + ((index / baseOffsets.size) * 28)
+                val radiusY = 110 + ((index / baseOffsets.size) * 24)
+                Pair((kotlin.math.cos(angle) * radiusX).toInt(), (kotlin.math.sin(angle) * radiusY).toInt())
+            }
             val isSelected = selectedProOnMap?.id == pro.id
 
             Box(
                 modifier = Modifier
                     .align(Alignment.Center)
                     .offset(x = pos.first.dp, y = pos.second.dp)
-                    .clickable { selectedProOnMap = pro }
+                    .clickable {
+                        selectedProId = pro.id
+                        recenterNotice = false
+                    }
                     .testTag("map_marker_${pro.id}")
             ) {
                 Surface(
@@ -217,16 +236,21 @@ fun ClientMapScreen(viewModel: OficiosViewModel) {
             }
         }
 
-        // Recenter FAB
+        // Recenter & refresh FAB
         FloatingActionButton(
-            onClick = { /* Simulated GPS recenter */ },
+            onClick = {
+                viewModel.loadDataFromSupabase()
+                selectedProId = professionals.firstOrNull()?.id
+                recenterNotice = true
+            },
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(bottom = 160.dp, end = 20.dp),
+                .padding(bottom = 170.dp, end = 20.dp)
+                .testTag("map_recenter_fab"),
             containerColor = SurfaceWhite,
             contentColor = PrimaryNavy
         ) {
-            Icon(Icons.Default.MyLocation, contentDescription = "Mi ubicación")
+            Icon(Icons.Default.MyLocation, contentDescription = "Centrar mapa")
         }
 
         // Selected Worker Popup Card
@@ -280,7 +304,7 @@ fun ClientMapScreen(viewModel: OficiosViewModel) {
                                 )
                                 Spacer(modifier = Modifier.width(3.dp))
                                 Text(
-                                    text = pro.rating.toString(),
+                                    text = if (pro.rating > 0.0) pro.rating.toString() else "Nuevo",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = PrimaryNavy
@@ -289,7 +313,7 @@ fun ClientMapScreen(viewModel: OficiosViewModel) {
                                 Text(text = "•", color = TextSecondary)
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = "${pro.distanceKm} km de ti",
+                                    text = if (pro.distanceKm > 0.0) "${pro.distanceKm} km de ti" else pro.locationName.ifBlank { "Medellín" },
                                     fontSize = 12.sp,
                                     color = TextSecondary
                                 )
